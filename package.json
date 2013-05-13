@@ -11,6 +11,6 @@
     "jquery": "*",
     "forever": "*",
     "less-middleware": "*",
-    "node-sass", "*"
+    "node-sass": "*"
   }
 }
