@@ -31,7 +31,7 @@ app.configure(function(){
     src: '../sass',
     dest: '/css',
     root: path.join(__dirname, 'public'),
-    debug: true
+    debug: false
   }));
   app.use(express.static(path.join(__dirname, 'public')));
 });
