@@ -8,6 +8,7 @@ var express = require('express')
   , http = require('http')
   , path = require('path')
   , sass = require("node-sass")
+  , isA = require('isa-lib')(global)
   , app = express();
 
 app.configure(function(){
@@ -45,4 +46,6 @@ http.createServer(app).listen(app.get('port'), function(){
   console.log("Express server listening on port " + app.get('port'));
 });
 
-exports.app = app;
+// Require the app.js in REPL to bootstrap the app in interactive mode
+// > var app = require('./app.js');
+module.exports = app;
