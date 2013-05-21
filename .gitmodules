@@ -1,4 +1,4 @@
 [submodule "polymer"]
   path = public/polymer
-  url = https://github.com/Polymer/polymer.git
+  url = https://github.com/Polymer/polymer-all.git
   branch = master
