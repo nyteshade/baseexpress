@@ -13,13 +13,37 @@ var G = (typeof global != 'undefined') ? global : window,
     moduleState = {},
     root = '',
     jsRoot = '',
-    cssRoot = '';
+    cssRoot = '',
+    cols = { 
+      clear:      '\u001b[0m',
+      bold:       { on:'\u001b[1m',  off:'\u001b[22m' },
+      italic:     { on:'\u001b[3m',  off:'\u001b[23m' },
+      underline:  { on:'\u001b[4m',  off:'\u001b[24m' },
+      inverse:    { on:'\u001b[7m',  off:'\u001b[27m' },
+      white:      { on:'\u001b[37m', off:'\u001b[39m', bright: '\u001b[97m' },
+      grey:       { on:'\u001b[90m', off:'\u001b[39m', bright: '\u001b[90m' },
+      black:      { on:'\u001b[30m', off:'\u001b[39m', bright: '\u001b[90m' },
+      blue:       { on:'\u001b[34m', off:'\u001b[39m', bright: '\u001b[94m' },
+      cyan:       { on:'\u001b[36m', off:'\u001b[39m', bright: '\u001b[96m' },
+      green:      { on:'\u001b[32m', off:'\u001b[39m', bright: '\u001b[92m' },
+      magenta:    { on:'\u001b[35m', off:'\u001b[39m', bright: '\u001b[95m' },
+      red:        { on:'\u001b[31m', off:'\u001b[39m', bright: '\u001b[91m' },
+      yellow:     { on:'\u001b[33m', off:'\u001b[39m', bright: '\u001b[93m' } 
+    };
 
 /**
  * TODO comment
  */
 function Combiner(files, config) {
-  config = jQuery.extend({}, Combiner.DEFAULTS, isO(files) ? files : config || {});
+  config = jQuery.extend({
+      root: moduleState.root, 
+      jsRoot: moduleState.jsRoot,
+      jsUri: moduleState.jsRootUri,
+      cssRoot: moduleState.cssRoot,
+      cssUri: moduleState.cssRootUri, 
+      express: moduleState.express || null
+  }, Combiner.DEFAULTS, isO(files) ? files : config || {});
+
   if (isO(files) && files.files) {
     files = isA(config.files) && config.files || [];
   }
@@ -35,8 +59,10 @@ function Combiner(files, config) {
   this.type = config.type || Combiner.JS;
   this.files = isA(files) && files || [];
   this.requirements = [];
-  this.cache = {};
+  this.order = [];
+  this.cache = Combiner.getGlobalCache(this.type);
   this.config = config;
+  this.output = "";
 
   if (!this.ROOTS.length) {
     this.ROOTS = Combiner.getRootsForType(this.type);
@@ -70,7 +96,7 @@ Combiner.prototype = {
 
   go: function(files, dest) {
     this.readFiles(files || this.files);
-    this.writeOutput(this.cache.output, dest);
+    this.writeOutput(this.output, dest);
     return this;
   },
 
@@ -78,30 +104,33 @@ Combiner.prototype = {
     // log('\x1b[34mreadFiles():%s\x1b[0m', new Error().stack);
 
     var soFar = "", 
-        self = this, 
+        self = this,
+        config = self.config, 
+        colors = require('util').inspect.colors,
         thisPass = [],
         reqs = [],
-        express = moduleState.express || null,
+        express = config.express || null,
         host = express && express.locals.settings.host || 'localhost',
         port = String(express && express.locals.settings.port || 80),
-        rootUri = self.type === Combiner.JS ? moduleState.jsRootUri :
-            moduleState.cssRootUri,
+        rootUri = (self.type === Combiner.JS) ? config.jsUri : config.cssUri,
         index, path, stat, defer, uri, url, result, reqsPass, isForReqs;
 
     files = files || self.files || [];
     cache = cache || self.cache || {};
+    isForReqs = arguments.length > 1;
 
-    if ((isForReqs = arguments.length < 2)) {
-      cache['output'] = "";
+    if (!isForReqs) {
+      self.output = "";
       self.files = files;
       self.requirements = [];
+      self._pass = [];
     }
 
     this.ROOTS.forEach(function(root, rootIndex, roots) {
-      log('\x1b[31mROOTS[%s,%d]\x1b[0m', root, rootIndex);
+      log('%sROOTS[%s,%d]%s', cols.red.on, root, rootIndex, cols.red.off);
       files.forEach(function(file, fileIndex) {
         path = pth.join(pth.resolve(root), file);
-        log('\x1b[32mFILES[%s,%s]\x1b[0m', path, fileIndex);
+        log('%sFILES[%s,%s]%s', cols.green.on, path, fileIndex, cols.green.off);
         uri = pth.join(rootUri, file);
         url = URL.format({
           protocol: 'http:',
@@ -116,10 +145,14 @@ Combiner.prototype = {
         if (isForReqs) {
           self.requirements.push(uri);
         }
+        else {
+          self.order.push(uri);
+        }
+
 
         (function(path, uri, url, defer, reqsDefer, fileIndex, rootUri) {
           if (cache[uri]) {
-            log('\x1b[1mCACHED\x1b[0m %s', uri);
+            log('%sCACHED%s %s', cols.bold.on, cols.bold.off, uri);
             defer.resolve({
               path: path, 
               body: cache[uri].content,
@@ -132,7 +165,7 @@ Combiner.prototype = {
             jQuery.ajax({
               url:url, 
               success: function(body, status, xhr) {
-                log('\x1b[1mGOT\x1b[0m %s', uri);
+                log('%sGOT%s %s', cols.bold.on, cols.bold.off, uri);
                 defer.resolve({
                   path: path, 
                   body: body,
@@ -159,20 +192,28 @@ Combiner.prototype = {
               cache[uri] = pack;
 
               reqs = Combiner.getRequired(cache[uri].body);
-              log('\x1b[36mREQS[%s]: %s\x1b[0m', file, reqs);
+              log('%sREQS[%s]: %s%s', cols.cyan.on, file, reqs, cols.cyan.off);
               if (reqs.length) {
                 reqsPass = self.readFiles(reqs, cache).items;
                 reqsPass.push(defer.promise);
-                reqsDefer.resolve(reqsPass);
-                self.requirements = self.requirements.concat(reqs);
+                reqsDefer.resolve(reqsPass);  // Maybe nested array crap from here?!
                 thisPass = thisPass.concat(reqsPass);
+                self._pass = self._pass.concat(reqsPass);
+                reqs.reverse().forEach(function(reqFile) {
+                  var string = pth.join(rootUri, reqFile);
+                  if (self.order.indexOf(string) === -1) {
+                    self.order.push(string);                    
+                  }
+                });
               }
               else {
-                reqsDefer.resolve(defer.promise);
+                reqsDefer.resolve(defer.promise);                
               }
             }
           });
+
           thisPass.push(reqsDefer.promise);
+          self._pass.push(reqsDefer.promise);
        }(path, uri, url, defer, reqsDefer, fileIndex, rootUri));
 
       });
@@ -180,29 +221,27 @@ Combiner.prototype = {
 
     result = Q.allResolved(thisPass);
     result.items = thisPass;    
-    result.defer = Q.defer();
-    result.output = result.defer.promise;
 
-    if (arguments.length < 2) {      
-      result.then(function(groups) {
-        log('\x1b[91mGROUPS:\x1b[0m %s', groups);
-        groups.forEach(function(group, index) {
-          var file;
-          if (isA(group.valueOf())) {
-            log('\x1b[92m  GROUP:\x1b[0m %s', group.valueOf());
-            group.valueOf().forEach(function(file) {
-              file = file.valueOf && file.valueOf() || file;
-              log('\x1b[92m    PROMISE:\x1b[0m %s', file);
-              self.cache['output'] += file.body;
-            })
-          }
-          else {
-            file = file.valueOf && file.valueOf() || file;
-            log('\x1b[92m  PROMISE:\x1b[0m %s', promise);
-            self.cache['output'] += file.body;
-          }
-        });
-        result.defer.resolve(self.cache['output']);
+    if (!isForReqs) {      
+      var _tmp = Q.defer(), _items = [], _all;
+      result.output = _tmp.promise;
+
+      self.order.forEach(function(resource) {
+        _items.push(Q.get(self.cache, resource));
+      });
+
+      global._all = _all = Q.allResolved(_items);
+      
+      _all.then(function() {
+        self.order.reverse();
+        for (var i = 0; i < self.order.length; i++) {
+          if (!self.cache[self.order[i]]) {
+            log('Missing %s%s%s', cols.red.on, self.order[i], cols.red.off);
+            continue;
+          }          
+          self.output += self.cache[self.order[i]].body;
+        }
+        _tmp.resolve(self.output);
       });
     }
 
@@ -210,11 +249,11 @@ Combiner.prototype = {
   },
 
   writeOutput: function(output, dest) {
-    output = output || this.cache.output;
+    output = output || this.output;
 
     if (output.length === 0) {
       this.readFiles();
-      output = this.cache.output;
+      output = this.output;
     }
 
     var dir = Combiner.getRootsForType(this.type), fpath;
@@ -272,6 +311,18 @@ jQuery.extend(Combiner, {
     }
 
     return results;
+  },
+
+  /**
+   * TODO Comment
+   */
+  getGlobalCache: function(type) {
+    var scope = (typeof global !== 'undefined') ? global : window;
+
+    ((scope.CombinerCache = scope.CombinerCache || {})[type] = 
+        scope.CombinerCache[type] || {});
+
+    return scope.CombinerCache[type];
   },
 
   /**
