@@ -103,154 +103,12 @@ Combiner.prototype = {
     return this;
   },
 
-  readFiles: function(files, cache) {
-    // log('\x1b[34mreadFiles():%s\x1b[0m', new Error().stack);
-
-    var soFar = "", 
-        self = this,
-        config = self.config, 
-        colors = require('util').inspect.colors,
-        thisPass = [],
-        reqs = [],
-        express = config.express || null,
-        host = express && express.locals.settings.host || 'localhost',
-        port = String(express && express.locals.settings.port || 80),
-        rootUri = (self.type === Combiner.JS) ? config.jsUri : config.cssUri,
-        index, path, stat, defer, uri, url, result, reqsPass, isForReqs;
-
-    files = files || self.files || [];
-    cache = cache || self.cache || {};
-    isForReqs = arguments.length > 1;
-
-    if (!isForReqs) {
-      self.output = "";
-      self.files = files;
-      self.requirements = [];
-      self._pass = [];
-    }
-
-    this.ROOTS.forEach(function(root, rootIndex, roots) {
-      log('%sROOTS[%s,%d]%s', cols.red.on, root, rootIndex, cols.red.off);
-      files.forEach(function(file, fileIndex) {
-        path = pth.join(pth.resolve(root), file);
-        log('%sFILES[%s,%s]%s', cols.green.on, path, fileIndex, cols.green.off);
-        uri = pth.join(rootUri, file);
-        url = URL.format({
-          protocol: 'http:',
-          hostname: host,
-          pathname: uri,
-          search: '?skipCombiner=true',
-          port: port
-        });        
-        defer = Q.defer();
-        reqsDefer = Q.defer();
-
-        if (isForReqs) {
-          self.requirements.push(uri);
-        }
-        else {
-          self.order.push(uri);
-        }
-
-
-        (function(path, uri, url, defer, reqsDefer, fileIndex, rootUri) {
-          if (cache[uri]) {
-            log('%sCACHED%s %s', cols.bold.on, cols.bold.off, uri);
-            defer.resolve({
-              path: path, 
-              body: cache[uri].content,
-              error: null,
-              index: fileIndex,
-              reqs: reqsDefer.promise
-            });
-          }
-          else {
-            jQuery.ajax({
-              url:url, 
-              success: function(body, status, xhr) {
-                log('%sGOT%s %s', cols.bold.on, cols.bold.off, uri);
-                defer.resolve({
-                  path: path, 
-                  body: body,
-                  error: null,
-                  index: fileIndex
-                });
-              },
-              error: function(xhr, status, error) {
-                defer.resolve({
-                  path: path,
-                  body: status,
-                  error: error,
-                  index: fileIndex
-                });
-              },
-              complete: function(xhr, status) {}
-            }); 
-          }       
-          
-          defer.promise.done(function(pack) {
-            var body = pack.body, path = pack.path, error = pack.error, z;
-
-            if (!error) {
-              cache[uri] = pack;
-
-              reqs = Combiner.getRequired(cache[uri].body);
-              log('%sREQS[%s]: %s%s', cols.cyan.on, file, reqs, cols.cyan.off);
-              if (reqs.length) {
-                reqsPass = self.readFiles(reqs, cache).items;
-                reqsPass.push(defer.promise);
-                reqsDefer.resolve(reqsPass);  // Maybe nested array crap from here?!
-                thisPass = thisPass.concat(reqsPass);
-                self._pass = self._pass.concat(reqsPass);
-                reqs.reverse().forEach(function(reqFile) {
-                  var string = pth.join(rootUri, reqFile);
-                  if (self.order.indexOf(string) === -1) {
-                    self.order.push(string);                    
-                  }
-                });
-              }
-              else {
-                reqsDefer.resolve(defer.promise);                
-              }
-            }
-          });
-
-          thisPass.push(reqsDefer.promise);
-          self._pass.push(reqsDefer.promise);
-       }(path, uri, url, defer, reqsDefer, fileIndex, rootUri));
-
-      });
-    });
-
-    result = Q.allResolved(thisPass);
-    result.items = thisPass;    
-
-    if (!isForReqs) {      
-      var _tmp = Q.defer(), _items = [], _all;
-      result.output = _tmp.promise;
-
-      self.order.forEach(function(resource) {
-        _items.push(Q.get(self.cache, resource));
-      });
-
-      global._all = _all = Q.allResolved(_items);
-      
-      _all.then(function() {
-        self.order.reverse();
-        for (var i = 0; i < self.order.length; i++) {
-          if (!self.cache[self.order[i]]) {
-            log('Missing %s%s%s', cols.red.on, self.order[i], cols.red.off);
-            continue;
-          }          
-          self.output += self.cache[self.order[i]].body;
-        }
-        _tmp.resolve(self.output);
-      });
-    }
-
-    return result;
-  },
-
+  /**
+   * This bit of code loads the files and their dependencies into the
+   * cache. If the file already exists in the cache, I need to look into
+   * providing a way to refresh it. Maybe do a HEAD call first? Right now
+   * the call will be skipped if the file is already cached.
+   */
   cacheFile: function(file, rejectOnError, isRequirement) {
     var defer = Q.defer(), 
         promise = defer.promise,
@@ -278,63 +136,151 @@ Combiner.prototype = {
           reqsPromise: null
         };  
 
+    var xhrSuccess = (function xhrSuccess(data) {
+      if (config.log) { log('%sGOT%s %s', cols.bold.on, cols.bold.off, uri); }
+      try {
+        payload.body = data;
+        payload.reqs = Combiner.getRequired(data).reverse();
+
+        if (payload.reqs.length) {
+          this.requirements = this.requirements.concat(payload.reqs);
+          if (config.log) {
+            log('%s%sREQS%s %s%s', cols.bold.on, cols.blue.bright,
+                cols.bold.off, JSON.stringify(payload.reqs), cols.clear);
+          }
+
+          payload.reqsPromise = [];
+          payload.reqs.forEach((function(req, reqIndex, reqs) {
+            var promise = this.cacheFile(req, rejectOnError, true);
+            payload.reqsPromise.push(promise);
+          }).bind(this));
+
+          Q.all(payload.reqsPromise).fin((function() {
+            this.cache[uri] = payload;
+            defer.resolve(payload);
+          }).bind(this));
+        }
+        else {
+          this.cache[uri] = payload;
+          defer.resolve(payload);
+        }
+      }
+      catch(e) {err(e); payload.error = e; defer.reject(payload);}
+    }).bind(this);
+
     if (!isRequirement) {
       this.files.push(file);
     }
     this.order.push(file);
 
-    jQuery.ajax({
-      url: url,
-      success: (function(data, statux, xhr) {
-        log('%sGOT%s %s', cols.bold.on, cols.bold.off, uri);
-        try {
-          payload.body = data;
-          payload.reqs = Combiner.getRequired(data).reverse();
+    if (!this.cache[uri]) {
+      jQuery.ajax({
+        url: url,
+        success: (function(data, statux, xhr) {
+          xhrSuccess(data);
+        }).bind(this),
 
-          if (payload.reqs.length) {
-            this.requirements = this.requirements.concat(payload.reqs);
-            log('%s%sREQS%s %s%s', cols.bold.on, cols.blue.bright,
-                cols.bold.off, JSON.stringify(payload.reqs), cols.clear);
-            payload.reqsPromise = [];
-            payload.reqs.forEach((function(req, reqIndex, reqs) {
-              var promise = this.cacheFile(req, rejectOnError, true);
-              payload.reqsPromise.push(promise);
-            }).bind(this));
-            Q.all(payload.reqsPromise).fin((function() {
-              this.cache[uri] = payload;
-              defer.resolve(payload);
-            }).bind(this));
+        error: (function(xhr, status, error) {
+          err('%sERROR%s %s', cols.red.on, cols.red.off, JSON.stringify(error));
+          payload['error'] = error;
+          if (rejectOnError) {
+            defer.reject(payload);
           }
           else {
-            this.cache[uri] = payload;
             defer.resolve(payload);
           }
-        }
-        catch(e) {err(e); payload.error = e; defer.reject(payload);}
-      }).bind(this),
-
-      error: (function(xhr, status, error) {
-        err('%sERROR%s %s', cols.red.on, cols.red.off, JSON.stringify(error));
-        payload['error'] = error;
-        if (rejectOnError) {
-          defer.reject(payload);
-        }
-        else {
-          defer.resolve(payload);
-        }
-      }).bind(this)
-    });
+        }).bind(this)
+      });
+    }
+    else {
+      if (config.log) {
+        log('%sCACHED%s %s%s%s', cols.bold.on, cols.bold.off, cols.grey.on,
+          uri, cols.clear);
+      }
+      xhrSuccess(this.cache[uri].body);
+    }
 
     return promise; 
   },
 
-  readFiles2: function(filesToRead, processReqs) {
+  /**
+   * Given the fact that we don't want duplicate items in our list and a
+   * payload object is not nicely comparable using the === operator, we
+   * check for the equality of a sub field. If it exists in the supplied
+   * list, we return true. Otherwise we return false.
+   *
+   * @param {Array} list an array of payload objects to search
+   * @param {Object} payload the payload object to search for
+   * @return true if the supplied payload already exists in the list; false
+   *     otherwise
+   */
+  hasPayload: function(list, payload) {
+    var result = false;
+    if (list && payload && payload.path) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].path === payload.path) {
+          result = true;
+          break;
+        }
+      }
+    }
+    return result;
+  },
+
+  /**
+   * A payload is a chunk of data stored about a particular file or
+   * resource. These are created in the {@link #cacheFile} method. This
+   * method builds up a flattened list of payload objects for each top
+   * level payload supplied. 
+   *
+   * @param {Object} payload this is a file descriptor created in cacheFile
+   * @param {Array} list this is a list that is passed in and returned to
+   *     allow for appending of a single list
+   * @return the list supplied or the one created when no list is supplied
+   */ 
+  processPayload: function(payload, list) {
+    if (!list) list = [];        
+    if (payload.reqsPromise && payload.reqsPromise.length) {
+      for (var i = 0; i < payload.reqsPromise.length; i++) {
+        var subPayload = payload.reqsPromise[i].valueOf();
+        this.processPayload(subPayload, list);
+        if (!this.hasPayload(list, subPayload)) {
+          list.push(subPayload);
+        }
+      }
+    }
+    if (!this.hasPayload(list, subPayload)) {
+      list.push(payload);
+    }
+    return list;
+  },
+
+  /**
+   * This method takes a list of files relative to the appropriate root
+   * of this Combiner. These files are then loaded, searched for noted
+   * requirements. If there are any, those files will also be given the
+   * same procedure. 
+   * 
+   * This code maintains the ordering of the scripts as necessary, placing
+   * any listed requirements before the content of the supplied file, in
+   * their specified order. 
+   * 
+   * Finally when all is said and done, the {@code output} property is 
+   * filled with the content of the loaded data.
+   *
+   * @param {Array(String)} filesToRead an array of Strings denoting the
+   *     name and relative path of the files to parse.
+   * @return a promise that can be listened to for when the process is
+   *     complete. It receives all the payloads in its resolution. 
+   */
+  readFiles: function(filesToRead) {
     var cache     = this.cache,
         config    = this.config,
         files     = filesToRead || this.files,
         promises  = [],
-        defer     = Q.defer()
-        promise    = defer.promise;
+        defer     = Q.defer(),
+        promise   = defer.promise,
+        rootUri   = this.type === Combiner.JS ? config.jsUri : config.cssUri;
 
     this.ROOTS.forEach((function(root, rootIndex) {
       files.forEach((function(file, fileIndex) {
@@ -343,42 +289,28 @@ Combiner.prototype = {
     }).bind(this));
 
     Q.all(promises).then((function(promised) {
-      log('All files loaded');
-      function hasPayload(list, payload) {
-        var result = false;
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].path === payload.path) {
-            result = true;
-            break;
-          }
-        }
-        return result;
+      if (config.log) {
+        log('%sDONE%s All files accounted for%s', cols.green.on, cols.grey.on,
+          cols.clear);
       }
-      function processPayload(payload, list) {
-        if (!list) list = [];        
-        if (payload.reqsPromise && payload.reqsPromise.length) {
-          for (var i = 0; i < payload.reqsPromise.length; i++) {
-            var subPayload = payload.reqsPromise[i].valueOf();
-            processPayload(subPayload, list);
-            if (!hasPayload(list, subPayload)) {
-              log('adding %s', subPayload.path);
-              list.push(subPayload);
-            }
-          }
+
+      try {
+        var result = [];
+        for (var i = 0; i < promised.length; i++) {
+          result = this.processPayload(promised[i], result);
         }
-        if (!hasPayload(list, subPayload)) {
-          log('adding %s', payload.path);
-          list.push(payload);
-        }
-        return list;
+        defer.resolve(result);
+
+
+        this.order.reverse();     
+        this.output = ""; 
+        this.order.forEach((function(item) {
+          this.output += this.cache[pth.join(rootUri, item)].body;
+        }).bind(this));
       }
-      var result = [];
-      for (var i = 0; i < promised.length; i++) {
-        result = processPayload(promised[i], result);
+      catch (e) {
+        err('Failed in readFiles() Q.all(): ',e);
       }
-      log('Resolving readFiles2 promise with ', JSON.stringify(result));
-      defer.resolve(result);
-      this.order.reverse();
     }).bind(this));
 
     return promise;
@@ -427,7 +359,8 @@ jQuery.extend(Combiner, {
   /** Default config properties for Combiner instances */
   DEFAULTS: {
     suffix: ".packed",
-    output: "concatted"
+    output: "concatted",
+    log: true
   },
 
   /** Regular expression used to parse files for requirements "arrays" */
@@ -541,10 +474,7 @@ function PageNameCombiner(req, res, next) {
   cssTask = cssCombiner.readFiles([pth.join('pages', cssPageName + Combiner.CSS)]);
   // res.locals.pageCSS = cssCombiner.writeOutput().uri;
 
-  log(global.jsTask = jsTask);
-  log(global.cssTask = cssTask);
-
-  Q.all([jsTask.output, cssTask.output]).done(function() {
+  Q.all([jsTask, cssTask]).done(function() {
     res.locals.pageJS = jsCombiner.writeOutput().uri;
     res.locals.pageCSS = cssCombiner.writeOutput().uri;
     next();
@@ -565,7 +495,7 @@ function JSCombiner(req, res, next) {
       jsCombiner = req.app.jsCombiner || new Combiner();
 
   if (pth.basename(req.url).indexOf(jsCombiner.config.suffix) === -1) {
-    jsCombiner.readFiles([jsPageName]).output.done(function() {
+    jsCombiner.readFiles([jsPageName]).then(function() {
       res.set('Content-Type', 'text/javascript');
       res.send(jsCombiner.cache.output);     
     });
@@ -586,10 +516,8 @@ function CSSCombiner(req, res, next) {
   var cssPageName = req.params[0],
       cssCombiner = req.app.cssCombiner || new Combiner({type: Combiner.CSS});
 
-  log(require('util').inspect(req.route, {colors:true}));
-
   if (pth.basename(req.url).indexOf(cssCombiner.config.suffix) === -1) {
-    cssCombiner.readFiles([cssPageName]).output.done(function() {
+    cssCombiner.readFiles([cssPageName]).then(function() {
       res.set('Content-Type', 'text/css');
       res.send(cssCombiner.cache.output);       
     });
