@@ -65,7 +65,7 @@ function Combiner(files, config) {
   this.output = "";
 
   if (!this.ROOTS.length) {
-    this.ROOTS = Combiner.getRootsForType(this.type);
+    this.ROOTS.push(this.type === Combiner.JS ? config.jsRoot : cssRoot);
   }
 }
 
@@ -84,6 +84,9 @@ Combiner.prototype = {
 
   /** Requirements for the files loaded. */
   requirements: null,
+
+  /** Order of files to reconstruct */
+  order: null,
 
   /** Already read */
   cache: null,
@@ -246,6 +249,139 @@ Combiner.prototype = {
     }
 
     return result;
+  },
+
+  cacheFile: function(file, rejectOnError, isRequirement) {
+    var defer = Q.defer(), 
+        promise = defer.promise,
+        config = this.config,
+        express = config.express || null,
+        host = express && express.locals.settings.host || 'localhost',
+        port = String(express && express.locals.settings.port || 80),
+        rootUri = this.type === Combiner.JS ? config.jsUri : config.cssUri,
+        path = pth.join(pth.resolve(config.root), file),
+        uri = pth.join(rootUri, file),
+        url = URL.format({
+          protocol: 'http:',
+          hostname: host,
+          pathname: uri,
+          search: '?skipCombiner=true',
+          port: port
+        }),
+        payload = {
+          body: null,
+          error: null,
+          uri: uri,
+          path: path,
+          promise: promise,
+          reqs: [],
+          reqsPromise: null
+        };  
+
+    if (!isRequirement) {
+      this.files.push(file);
+    }
+    this.order.push(file);
+
+    jQuery.ajax({
+      url: url,
+      success: (function(data, statux, xhr) {
+        log('%sGOT%s %s', cols.bold.on, cols.bold.off, uri);
+        try {
+          payload.body = data;
+          payload.reqs = Combiner.getRequired(data).reverse();
+
+          if (payload.reqs.length) {
+            this.requirements = this.requirements.concat(payload.reqs);
+            log('%s%sREQS%s %s%s', cols.bold.on, cols.blue.bright,
+                cols.bold.off, JSON.stringify(payload.reqs), cols.clear);
+            payload.reqsPromise = [];
+            payload.reqs.forEach((function(req, reqIndex, reqs) {
+              var promise = this.cacheFile(req, rejectOnError, true);
+              payload.reqsPromise.push(promise);
+            }).bind(this));
+            Q.all(payload.reqsPromise).fin((function() {
+              this.cache[uri] = payload;
+              defer.resolve(payload);
+            }).bind(this));
+          }
+          else {
+            this.cache[uri] = payload;
+            defer.resolve(payload);
+          }
+        }
+        catch(e) {err(e); payload.error = e; defer.reject(payload);}
+      }).bind(this),
+
+      error: (function(xhr, status, error) {
+        err('%sERROR%s %s', cols.red.on, cols.red.off, JSON.stringify(error));
+        payload['error'] = error;
+        if (rejectOnError) {
+          defer.reject(payload);
+        }
+        else {
+          defer.resolve(payload);
+        }
+      }).bind(this)
+    });
+
+    return promise; 
+  },
+
+  readFiles2: function(filesToRead, processReqs) {
+    var cache     = this.cache,
+        config    = this.config,
+        files     = filesToRead || this.files,
+        promises  = [],
+        defer     = Q.defer()
+        promise    = defer.promise;
+
+    this.ROOTS.forEach((function(root, rootIndex) {
+      files.forEach((function(file, fileIndex) {
+        promises.push(this.cacheFile(file));
+      }).bind(this));
+    }).bind(this));
+
+    Q.all(promises).then((function(promised) {
+      log('All files loaded');
+      function hasPayload(list, payload) {
+        var result = false;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].path === payload.path) {
+            result = true;
+            break;
+          }
+        }
+        return result;
+      }
+      function processPayload(payload, list) {
+        if (!list) list = [];        
+        if (payload.reqsPromise && payload.reqsPromise.length) {
+          for (var i = 0; i < payload.reqsPromise.length; i++) {
+            var subPayload = payload.reqsPromise[i].valueOf();
+            processPayload(subPayload, list);
+            if (!hasPayload(list, subPayload)) {
+              log('adding %s', subPayload.path);
+              list.push(subPayload);
+            }
+          }
+        }
+        if (!hasPayload(list, subPayload)) {
+          log('adding %s', payload.path);
+          list.push(payload);
+        }
+        return list;
+      }
+      var result = [];
+      for (var i = 0; i < promised.length; i++) {
+        result = processPayload(promised[i], result);
+      }
+      log('Resolving readFiles2 promise with ', JSON.stringify(result));
+      defer.resolve(result);
+      this.order.reverse();
+    }).bind(this));
+
+    return promise;
   },
 
   writeOutput: function(output, dest) {
