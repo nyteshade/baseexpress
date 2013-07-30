@@ -12,6 +12,7 @@
     "forever": "*",
     "less-middleware": "*",
     "node-sass": "*",
-    "isa-lib": "*"
+    "isa-lib": "*",
+    "mongodb": "*"
   }
 }
