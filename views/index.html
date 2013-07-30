@@ -9,6 +9,14 @@
         Welcome {{name}}, we need more {{gender}} around here.
         {{/params}}
       </p>
+      <p style="margin:0.5em 0 0 1.5em">
+        {{#if bands}}
+          <b>Bands</b>
+          <ol class="well" style="padding-left:3em;width:300px">
+          {{#each bands}}<li>{{this.name}}</li>{{/each}}
+          </ol>
+        {{/if}}        
+      </p>
     </div>
   </div>
 </div>

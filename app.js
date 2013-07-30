@@ -62,6 +62,7 @@ app.configure('development', function(){
 });
 
 app.get('/', combiner.PageNameCombiner, routes.index);
+app.get('/testMongo', combiner.PageNameCombiner.bind({url: '/'}), routes.testMongo);
 
 // By binding an object that specifies 'url', the PageNameCombiner
 // can be coerced into sharing JS and CSS of a differently named
