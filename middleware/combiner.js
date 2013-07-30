@@ -444,13 +444,16 @@ jQuery.extend(Combiner, {
  * TODO comment
  */ 
 function PageNameCombiner(req, res, next) {
-  var defExtension = '.' + req.app.get('view engine'),
-      pageExtension = pth.extname(req.url) || defExtension,
-      pageName = req.url === '/' ? 'index' 
-          : pth.basename(req.url).replace(pageExtension, ''),
-      uriToPage = pth.dirname(req.url),
+  var defExtension, pageExtension, pageName, uriToPage, url,
       jsPageName, jsPagePath, jsCombiner, jsTask, 
       cssPageName, cssPagePath, cssCombiner, cssTask;
+
+  url = this.url || req.url;
+  defExtension = '.' + req.app.get('view engine');
+  pageExtension = pth.extname(req.url) || defExtension;
+  pageName = req.url === '/' ? 'index' 
+      : pth.basename(req.url).replace(pageExtension, '');
+  uriToPage = pth.dirname(req.url);
 
   jsPageName = pageName;
   jsPagePath = pth.join(jsRoot, uriToPage, 'pages');
