@@ -25,7 +25,8 @@ var express = require('express')
       jsRoot: path.join(ROOT, 'public', 'js'),
       cssRoot: path.join(ROOT, 'public', 'css'),
       env: app.get('env'),
-      express: app
+      express: app,
+      log: false
     })
   , lessMiddleware = require('less-middleware')({ 
       src: '../less',
@@ -61,6 +62,13 @@ app.configure('development', function(){
 });
 
 app.get('/', combiner.PageNameCombiner, routes.index);
+
+// By binding an object that specifies 'url', the PageNameCombiner
+// can be coerced into sharing JS and CSS of a differently named
+// page. / == 'index' as far as page names for CSS and JS go. 
+app.get('/name/:name/gender/:gender', combiner.PageNameCombiner.bind({
+  url: '/'
+}), routes.index);
 
 combiner.handleScriptAndStyle(app);
 

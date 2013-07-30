@@ -13,6 +13,7 @@
     "less-middleware": "*",
     "node-sass": "*",
     "isa-lib": "*",
-    "mongodb": "*"
+    "mongodb": "*",
+    "mkdirp": "*"
   }
 }

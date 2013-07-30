@@ -35,14 +35,14 @@ var G = (typeof global != 'undefined') ? global : window,
  * TODO comment
  */
 function Combiner(files, config) {
-  config = jQuery.extend({
+  config = jQuery.extend(Combiner.DEFAULTS, {
       root: moduleState.root, 
       jsRoot: moduleState.jsRoot,
       jsUri: moduleState.jsRootUri,
       cssRoot: moduleState.cssRoot,
       cssUri: moduleState.cssRootUri, 
       express: moduleState.express || null
-  }, Combiner.DEFAULTS, isO(files) ? files : config || {});
+  }, isO(files) ? files : config || {});
 
   if (isO(files) && files.files) {
     files = isA(config.files) && config.files || [];
@@ -360,7 +360,7 @@ jQuery.extend(Combiner, {
   DEFAULTS: {
     suffix: ".packed",
     output: "concatted",
-    log: true
+    log: false
   },
 
   /** Regular expression used to parse files for requirements "arrays" */
@@ -446,44 +446,49 @@ jQuery.extend(Combiner, {
 function PageNameCombiner(req, res, next) {
   var defExtension, pageExtension, pageName, uriToPage, url,
       jsPageName, jsPagePath, jsCombiner, jsTask, 
-      cssPageName, cssPagePath, cssCombiner, cssTask;
+      cssPageName, cssPagePath, cssCombiner, cssTask, mkdirp;
 
+  mkdirp = require('mkdirp');
   url = this.url || req.url;
   defExtension = '.' + req.app.get('view engine');
-  pageExtension = pth.extname(req.url) || defExtension;
-  pageName = req.url === '/' ? 'index' 
-      : pth.basename(req.url).replace(pageExtension, '');
-  uriToPage = pth.dirname(req.url);
+  pageExtension = pth.extname(url) || defExtension;
+  pageName = url === '/' ? 'index' 
+      : pth.basename(url).replace(pageExtension, '');
+  uriToPage = pth.dirname(url);
 
   jsPageName = pageName;
   jsPagePath = pth.join(jsRoot, uriToPage, 'pages');
-  jsCombiner = req.app.jsCombiner || new Combiner({
-    type: Combiner.JS, 
-    output: jsPageName,
-    outputPath: jsPagePath
-  });
+  mkdirp.sync(jsPagePath);
+  jsCombiner = req.app.jsCombiner || new Combiner(jQuery.extend(
+    JSCombiner.baseConfig, 
+    {
+      type: Combiner.JS, 
+      output: jsPageName,
+      outputPath: jsPagePath
+    }
+  ));
 
   jsTask = jsCombiner.readFiles([pth.join('pages', jsPageName + Combiner.JS)]);
-  // res.locals.pageJS = jsCombiner.writeOutput().uri;
 
   cssPageName = pageName;
   cssPagePath = pth.join(cssRoot, uriToPage, 'pages');
-  cssCombiner = req.app.cssCombiner || new Combiner({
-    type: Combiner.CSS, 
-    output: cssPageName,
-    outputPath: cssPagePath
-  });
+  mkdirp.sync(cssPagePath);
+  cssCombiner = req.app.cssCombiner || new Combiner(jQuery.extend(
+    CSSCombiner.baseConfig,
+    {
+      type: Combiner.CSS, 
+      output: cssPageName,
+      outputPath: cssPagePath
+    }
+  ));
 
   cssTask = cssCombiner.readFiles([pth.join('pages', cssPageName + Combiner.CSS)]);
-  // res.locals.pageCSS = cssCombiner.writeOutput().uri;
 
   Q.all([jsTask, cssTask]).done(function() {
     res.locals.pageJS = jsCombiner.writeOutput().uri;
     res.locals.pageCSS = cssCombiner.writeOutput().uri;
     next();
   })
-
-  // next();
 };
 
 /**
@@ -494,8 +499,9 @@ function JSCombiner(req, res, next) {
     return next();
   }
 
-  var jsPageName = req.params[0],
-      jsCombiner = req.app.jsCombiner || new Combiner();
+  var config = JSCombiner.baseConfig || {},
+      jsPageName = req.params[0],
+      jsCombiner = req.app.jsCombiner || new Combiner(config);
 
   if (pth.basename(req.url).indexOf(jsCombiner.config.suffix) === -1) {
     jsCombiner.readFiles([jsPageName]).then(function() {
@@ -516,8 +522,10 @@ function CSSCombiner(req, res, next) {
     return next();
   }
 
-  var cssPageName = req.params[0],
-      cssCombiner = req.app.cssCombiner || new Combiner({type: Combiner.CSS});
+  var config = jQuery.extend({}, CSSCombiner.baseConfig 
+          || {}, {type: Combiner.CSS}),
+      cssPageName = req.params[0],
+      cssCombiner = req.app.cssCombiner || new Combiner(config);
 
   if (pth.basename(req.url).indexOf(cssCombiner.config.suffix) === -1) {
     cssCombiner.readFiles([cssPageName]).then(function() {
@@ -574,6 +582,9 @@ function handleBoth(express, additonalMiddleware, jsPath, cssPath) {
 }
 
 module.exports = function(config) {
+  CSSCombiner.baseConfig = config;
+  JSCombiner.baseConfig = config;
+
   this.CSSCombiner = CSSCombiner;
   this.JSCombiner = JSCombiner;
   this.PageNameCombiner = PageNameCombiner;
@@ -581,7 +592,6 @@ module.exports = function(config) {
   this.handleCSS = handleCSS;
   this.handleJS = handleJS;
   this.handleScriptAndStyle = handleBoth;
-
 
   this.root = root = config.root || process.cwd();
   this.jsRoot = jsRoot = config.jsRoot || pth.join(this.root, 'js');
