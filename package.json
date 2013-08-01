@@ -15,6 +15,8 @@
     "isa-lib": "*",
     "mongodb": "*",
     "mongoskin": "*",
-    "mkdirp": "*"
+    "mkdirp": "*",
+    "request": "*",
+    "q": "*"
   }
 }
