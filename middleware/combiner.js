@@ -1,3 +1,82 @@
+/**
+ * combiner.js
+ * Copyright (c) 2013 Gabrielle Harrison
+ *
+ * The Combiner system consists of a JavaScript class to manage the work of
+ * reading, combining and writing groups of related files together as a single
+ * piece of output.
+ * 
+ * When requiring the combiner.js middleware, it is often a good practice to
+ * specify a base configuration that defines how the middleware are to be used
+ * with your express server setup.
+ *
+ * An example from an app.js might be
+ * <code>
+ *   var Path = require('path'),
+ *       app = require('express')(),
+ *       ROOT = Path.dirname(__filename),
+ *       combiner = require('./middleware/combiner.js')({
+ *         root: Path.join(ROOT, 'public'),
+ *         jsRoot: Path.join(ROOT, 'public', 'js'),
+ *         cssRoot: Path.join(ROOT, 'public', 'css'),
+ *         env: app.get('env'),
+ *         express: app,
+ *         log: false
+ *       });
+ * </code>
+ * 
+ * ROOT is a convenience value that points to the absolute location of the
+ * executing directory of the app.js file on the host operating system.
+ *
+ * root as a config property represents the path to the public directory or
+ * whichever files can be statically served from the express app server
+ * 
+ * jsRoot as a config property represents the path to the javascript directory
+ * within the static file root for the app server
+ *
+ * cssRoot as a config property represents the path of the css directory within
+ * the static file root for the app server
+ *
+ * env as a config property should denote the environment of the express app
+ * server
+ *
+ * express as a config property should be a reference to the express app 
+ * instance
+ *
+ * log as a config property is a boolean value denoting whether or not logging
+ * about the combination of files should be logged for each use
+ *
+ * A config object passed into the require for the combiner middleware becomes
+ * the default base configuration for all the middleware functions that are
+ * exposed; including the JSCombiner, CSSCombiner and the PageNameCombiner.
+ * Doing so here prevents the need to do so upon each invocation of these 
+ * functions.
+ * 
+ * Dependencies
+ *   - Q.js 
+ *   - request.js
+ * 
+ * MIT Licensed
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
 var G = (typeof global != 'undefined') ? global : window,
     Q = require('q'),
     request = require('request'),
@@ -32,7 +111,14 @@ var G = (typeof global != 'undefined') ? global : window,
     };
 
 /**
- * TODO comment
+ * The Combiner is a system that combines, recursively, either CSS or
+ * JavaScript files to create a singled packaged output. 
+ *
+ * @param files an array of files to combine or a config object with a files
+ *     property
+ * @param config a configuration that would override any of the default values
+ *     supplied when the combiner is required by a script or above and beyond
+ *     the Combiner.DEFAULTS values
  */
 function Combiner(files, config) {
   config = jQuery.extend(Combiner.DEFAULTS, {
@@ -289,6 +375,8 @@ Combiner.prototype = {
     }).bind(this));
 
     Q.all(promises).then((function(promised) {
+      var fullPath;
+
       if (config.log) {
         log('%sDONE%s All files accounted for%s', cols.green.on, cols.grey.on,
           cols.clear);
@@ -305,17 +393,25 @@ Combiner.prototype = {
         this.order.reverse();     
         this.output = ""; 
         this.order.forEach((function(item) {
-          this.output += this.cache[pth.join(rootUri, item)].body;
+          fullPath = pth.join(rootUri, item);
+          this.output += this.cache[fullPath].body;
         }).bind(this));
       }
       catch (e) {
-        err('Failed in readFiles() Q.all(): ',e);
+        err('Failed in readFiles(%s) Q.all(): ', fullPath || '', e);
       }
     }).bind(this));
 
     return promise;
   },
 
+  /** 
+   * Writes the combined output to a file.
+   *
+   * @param the chunks of data to write as an array or if nothing is supplied
+   *     the already calculated values wil be used instead.
+   * @param dest the destination path or one will be calculated.
+   */
   writeOutput: function(output, dest) {
     output = output || this.output;
 
@@ -337,7 +433,6 @@ Combiner.prototype = {
       uri: fpath.replace(root, '')
     };
   }
-
 };
 
 jQuery.extend(Combiner, {
@@ -358,7 +453,7 @@ jQuery.extend(Combiner, {
 
   /** Default config properties for Combiner instances */
   DEFAULTS: {
-    suffix: ".packed",
+    suffix: ".packaged",
     output: "concatted",
     log: false
   },
@@ -383,7 +478,10 @@ jQuery.extend(Combiner, {
   },
 
   /**
-   * TODO Comment
+   * Obtain the location of where files are being cached in the global
+   * space.
+   *
+   * @param type the type of global cache that is desired
    */
   getGlobalCache: function(type) {
     var scope = (typeof global !== 'undefined') ? global : window;
@@ -441,7 +539,15 @@ jQuery.extend(Combiner, {
 });
 
 /**
- * TODO comment
+ * The page name combiner is a piece of middleware that automatically combines
+ * any JS and CSS into two separate packages. The names of the generated files
+ * are automatically determined by the route name. This can be overridden by
+ * specifying an object context with a specified url property. The middleware
+ * generator NamedCombiner(name) will do this automatically.
+ * 
+ * @param req the request object as supplied by Node.js
+ * @param res the response object as supplied by Node.js
+ * @param next the next middleware in the chain
  */ 
 function PageNameCombiner(req, res, next) {
   var defExtension, pageExtension, pageName, uriToPage, url,
@@ -492,10 +598,34 @@ function PageNameCombiner(req, res, next) {
 };
 
 /**
- * TODO comment
+ * A utility function that returns a PageNameCombiner middleware function that
+ * has a named url bound to the name that is supplied as the paramter to this
+ * function.
+ *
+ * This is really useful for routes that have parameterized values or that do
+ * not neatly resolve to a file name.
+ *
+ * @param name the url to bind the returned PageNameCombiner middleware with
+ */ 
+function NamedCombiner(name) {
+  return PageNameCombiner.bind({
+    url: name
+  });
+}
+
+/**
+ * A JavaScript middleware that wraps a Combiner instance. This is used by the
+ * PageNameCombiner but can be used individually as well. Subsequent requests
+ * that should skip this middleware for any particular reason can specify the
+ * URL parameter "[?&]skipCombiner=true". 
+ * 
+ * @param req the request object as supplied by Node.js
+ * @param res the response object as supplied by Node.js
+ * @param next the next middleware in the chain
  */
 function JSCombiner(req, res, next) {
-  if (req.query.skipCombiner && req.query.skipCombiner.toLowerCase() === "true") {
+  if (req.query.skipCombiner 
+      && req.query.skipCombiner.toLowerCase() === "true") {
     return next();
   }
 
@@ -515,7 +645,14 @@ function JSCombiner(req, res, next) {
 };
 
 /**
- * TODO comment
+ * A CSS middleware that wraps a Combiner instance. This is used by the
+ * PageNameCombiner but can be used individually as well. Subsequent requests
+ * that should skip this middleware for any particular reason can specify the
+ * URL parameter "[?&]skipCombiner=true". 
+ * 
+ * @param req the request object as supplied by Node.js
+ * @param res the response object as supplied by Node.js
+ * @param next the next middleware in the chain
  */
 function CSSCombiner(req, res, next) {
   if (req.query.skipCombiner && req.query.skipCombiner.toLowerCase() === "true") {
@@ -538,6 +675,17 @@ function CSSCombiner(req, res, next) {
   }
 };
 
+/**
+ * This function sets up a route, which by default is anything under
+ * /js/, that recursively will build up a combined package based on the
+ * various @require [] values in comments at the top of each file.
+ * 
+ * @param express an instance of the express app server
+ * @param additionalMiddleware a function or an array of functions of extra
+ *     middleware to invoke on each call to the created route
+ * @param pathName an alternate value to use instead of 'js' when setting
+ *     up the route
+ */
 function handleJS(express, additonalMiddleware, pathName) {
   var regex = new RegExp("^\\/" + (pathName || "js") + "\\/(.*)$"),
       middleware;
@@ -557,6 +705,17 @@ function handleJS(express, additonalMiddleware, pathName) {
   }
 }
 
+/**
+ * This function sets up a route, which by default is anything under
+ * /css/, that recursively will build up a combined package based on the
+ * various @require [] values in comments at the top of each file.
+ * 
+ * @param express an instance of the express app server
+ * @param additionalMiddleware a function or an array of functions of extra
+ *     middleware to invoke on each call to the created route
+ * @param pathName an alternate value to use instead of 'css' when setting
+ *     up the route
+ */
 function handleCSS(express, additonalMiddleware, pathName) {
   var regex = new RegExp("^\\/" + (pathName || "css") + "\\/(.*)$"),
       middleware;
@@ -576,11 +735,43 @@ function handleCSS(express, additonalMiddleware, pathName) {
   }
 }
 
+/**
+ * This function sets up two routes, which by default are anything under
+ * /js/ and /css/, that recursively will build up combined packages based 
+ * on the various @require [] values in comments at the top of each file.
+ * 
+ * @param express an instance of the express app server
+ * @param additionalMiddleware a function or an array of functions of extra
+ *     middleware to invoke on each call to the created route
+ * @param jsPath an alternate value to use instead of 'js' when setting
+ *     up the route
+ * @param cssPath an alternate value to use instead of 'css' when setting
+ *     up the route
+ */
 function handleBoth(express, additonalMiddleware, jsPath, cssPath) {
   handleJS(express, additonalMiddleware, jsPath);
   handleCSS(express, additonalMiddleware, cssPath);
 }
 
+/**
+ * This function takes a config object that defines the base config for the
+ * JSCombiner and CSSCombiner middleware. However when requiring the combiner
+ * middleware calling this function is necessary for everything else to work
+ * as intended. An example is as follows:
+ * <code>
+ *   var Path = require('path'),
+ *       app = require('express')(),
+ *       ROOT = Path.dirname(__filename),
+ *       combiner = require('./middleware/combiner.js')({
+ *         root: Path.join(ROOT, 'public'),
+ *         jsRoot: Path.join(ROOT, 'public', 'js'),
+ *         cssRoot: Path.join(ROOT, 'public', 'css'),
+ *         env: app.get('env'),
+ *         express: app,
+ *         log: false
+ *       });
+ * </code>
+ */
 module.exports = function(config) {
   CSSCombiner.baseConfig = config;
   JSCombiner.baseConfig = config;
@@ -588,6 +779,7 @@ module.exports = function(config) {
   this.CSSCombiner = CSSCombiner;
   this.JSCombiner = JSCombiner;
   this.PageNameCombiner = PageNameCombiner;
+  this.NamedCombiner = NamedCombiner;
   this.Combiner = Combiner;
   this.handleCSS = handleCSS;
   this.handleJS = handleJS;
