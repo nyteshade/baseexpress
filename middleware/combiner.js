@@ -121,7 +121,7 @@ var G = (typeof global != 'undefined') ? global : window,
  *     the Combiner.DEFAULTS values
  */
 function Combiner(files, config) {
-  config = jQuery.extend(Combiner.DEFAULTS, {
+  config = jQuery.extend({}, Combiner.DEFAULTS, {
       root: moduleState.root, 
       jsRoot: moduleState.jsRoot,
       jsUri: moduleState.jsRootUri,
@@ -137,6 +137,9 @@ function Combiner(files, config) {
   if (!config.type && files && files.length) {
     config.type = pth.extname(files[0]);
   }
+
+  // remove query string if present.
+  config.output = config.output.replace(/\?.*/, "");
 
   config.output = config.output.replace(pth.extname(config.output), '')
       + config.suffix + (config.type || Combiner.JS);
@@ -196,6 +199,7 @@ Combiner.prototype = {
    * the call will be skipped if the file is already cached.
    */
   cacheFile: function(file, rejectOnError, isRequirement) {
+
     var defer = Q.defer(), 
         promise = defer.promise,
         config = this.config,
@@ -560,12 +564,16 @@ function PageNameCombiner(req, res, next) {
   pageExtension = pth.extname(url) || defExtension;
   pageName = url === '/' ? 'index' 
       : pth.basename(url).replace(pageExtension, '');
+
+  // remove query string if present.
+  pageName = pageName.replace(/\?.*/, "");
+
   uriToPage = pth.dirname(url);
 
   jsPageName = pageName;
   jsPagePath = pth.join(jsRoot, uriToPage, 'pages');
   mkdirp.sync(jsPagePath);
-  jsCombiner = req.app.jsCombiner || new Combiner(jQuery.extend(
+  jsCombiner = req.app.jsCombiner || new Combiner(jQuery.extend({},
     JSCombiner.baseConfig, 
     {
       type: Combiner.JS, 
@@ -579,7 +587,7 @@ function PageNameCombiner(req, res, next) {
   cssPageName = pageName;
   cssPagePath = pth.join(cssRoot, uriToPage, 'pages');
   mkdirp.sync(cssPagePath);
-  cssCombiner = req.app.cssCombiner || new Combiner(jQuery.extend(
+  cssCombiner = req.app.cssCombiner || new Combiner(jQuery.extend({},
     CSSCombiner.baseConfig,
     {
       type: Combiner.CSS, 

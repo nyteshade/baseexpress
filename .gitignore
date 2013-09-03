@@ -1,0 +1,5 @@
+#
+# packages files (via combiner)
+#
+*.packaged.css
+*.packaged.js
