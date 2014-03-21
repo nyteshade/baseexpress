@@ -5,7 +5,7 @@
  * The Combiner system consists of a JavaScript class to manage the work of
  * reading, combining and writing groups of related files together as a single
  * piece of output.
- * 
+ *
  * When requiring the combiner.js middleware, it is often a good practice to
  * specify a base configuration that defines how the middleware are to be used
  * with your express server setup.
@@ -24,13 +24,13 @@
  *         log: false
  *       });
  * </code>
- * 
+ *
  * ROOT is a convenience value that points to the absolute location of the
  * executing directory of the app.js file on the host operating system.
  *
  * root as a config property represents the path to the public directory or
  * whichever files can be statically served from the express app server
- * 
+ *
  * jsRoot as a config property represents the path to the javascript directory
  * within the static file root for the app server
  *
@@ -40,7 +40,7 @@
  * env as a config property should denote the environment of the express app
  * server
  *
- * express as a config property should be a reference to the express app 
+ * express as a config property should be a reference to the express app
  * instance
  *
  * log as a config property is a boolean value denoting whether or not logging
@@ -49,25 +49,25 @@
  * A config object passed into the require for the combiner middleware becomes
  * the default base configuration for all the middleware functions that are
  * exposed; including the JSCombiner, CSSCombiner and the PageNameCombiner.
- * Doing so here prevents the need to do so upon each invocation of these 
+ * Doing so here prevents the need to do so upon each invocation of these
  * functions.
- * 
+ *
  * Dependencies
- *   - Q.js 
+ *   - Q.js
  *   - request.js
- * 
+ *
  * MIT Licensed
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -88,12 +88,14 @@ var G = (typeof global != 'undefined') ? global : window,
     isA = function(o) {return "[object Array]" === ({}).toString.call(o)},
     isO = function(o) {return "[object Object]" === ({}).toString.call(o)},
     isS = function(o) {return "[object String]" === ({}).toString.call(o)},
-    jQuery = require('jquery'),
+    jsdom = require('jsdom'),
+    domWindow = jsdom.jsdom().createWindow(),
+    jQuery = require('jquery')(domWindow),
     moduleState = {},
     root = '',
     jsRoot = '',
     cssRoot = '',
-    cols = { 
+    cols = {
       clear:      '\u001b[0m',
       bold:       { on:'\u001b[1m',  off:'\u001b[22m' },
       italic:     { on:'\u001b[3m',  off:'\u001b[23m' },
@@ -107,12 +109,12 @@ var G = (typeof global != 'undefined') ? global : window,
       green:      { on:'\u001b[32m', off:'\u001b[39m', bright: '\u001b[92m' },
       magenta:    { on:'\u001b[35m', off:'\u001b[39m', bright: '\u001b[95m' },
       red:        { on:'\u001b[31m', off:'\u001b[39m', bright: '\u001b[91m' },
-      yellow:     { on:'\u001b[33m', off:'\u001b[39m', bright: '\u001b[93m' } 
+      yellow:     { on:'\u001b[33m', off:'\u001b[39m', bright: '\u001b[93m' }
     };
 
 /**
  * The Combiner is a system that combines, recursively, either CSS or
- * JavaScript files to create a singled packaged output. 
+ * JavaScript files to create a singled packaged output.
  *
  * @param files an array of files to combine or a config object with a files
  *     property
@@ -122,11 +124,11 @@ var G = (typeof global != 'undefined') ? global : window,
  */
 function Combiner(files, config) {
   config = jQuery.extend({}, Combiner.DEFAULTS, {
-      root: moduleState.root, 
+      root: moduleState.root,
       jsRoot: moduleState.jsRoot,
       jsUri: moduleState.jsRootUri,
       cssRoot: moduleState.cssRoot,
-      cssUri: moduleState.cssRootUri, 
+      cssUri: moduleState.cssRootUri,
       express: moduleState.express || null
   }, isO(files) ? files : config || {});
 
@@ -159,7 +161,7 @@ function Combiner(files, config) {
 }
 
 Combiner.prototype = {
-  /** 
+  /**
    * JavaScript root directory. All JavaScript should be in one
    * of the directories this array contains.
    */
@@ -200,7 +202,7 @@ Combiner.prototype = {
    */
   cacheFile: function(file, rejectOnError, isRequirement) {
 
-    var defer = Q.defer(), 
+    var defer = Q.defer(),
         promise = defer.promise,
         config = this.config,
         express = config.express || null,
@@ -224,7 +226,7 @@ Combiner.prototype = {
           promise: promise,
           reqs: [],
           reqsPromise: null
-        };  
+        };
 
     var xhrSuccess = (function xhrSuccess(data) {
       if (config.log) { log('%sGOT%s %s', cols.bold.on, cols.bold.off, uri); }
@@ -264,23 +266,24 @@ Combiner.prototype = {
     this.order.push(file);
 
     if (!this.cache[uri]) {
-      jQuery.ajax({
-        url: url,
-        success: (function(data, statux, xhr) {
-          xhrSuccess(data);
-        }).bind(this),
-
-        error: (function(xhr, status, error) {
-          err('%sERROR%s %s', cols.red.on, cols.red.off, JSON.stringify(error));
-          payload['error'] = error;
-          if (rejectOnError) {
-            defer.reject(payload);
+      request.get({
+          url: url
+        },
+        (function(error, response, body) {
+          if (error) {
+            err('%sERROR%s %s', cols.red.on, cols.red.off, JSON.stringify(error));
+            payload['error'] = error;
+            if (rejectOnError) {
+              defer.reject(payload);
+            }
+            else {
+              defer.resolve(payload);
+            }
+            return;
           }
-          else {
-            defer.resolve(payload);
-          }
+          xhrSuccess(body);
         }).bind(this)
-      });
+      );
     }
     else {
       if (config.log) {
@@ -290,7 +293,7 @@ Combiner.prototype = {
       xhrSuccess(this.cache[uri].body);
     }
 
-    return promise; 
+    return promise;
   },
 
   /**
@@ -321,15 +324,15 @@ Combiner.prototype = {
    * A payload is a chunk of data stored about a particular file or
    * resource. These are created in the {@link #cacheFile} method. This
    * method builds up a flattened list of payload objects for each top
-   * level payload supplied. 
+   * level payload supplied.
    *
    * @param {Object} payload this is a file descriptor created in cacheFile
    * @param {Array} list this is a list that is passed in and returned to
    *     allow for appending of a single list
    * @return the list supplied or the one created when no list is supplied
-   */ 
+   */
   processPayload: function(payload, list) {
-    if (!list) list = [];        
+    if (!list) list = [];
     if (payload.reqsPromise && payload.reqsPromise.length) {
       for (var i = 0; i < payload.reqsPromise.length; i++) {
         var subPayload = payload.reqsPromise[i].valueOf();
@@ -349,19 +352,19 @@ Combiner.prototype = {
    * This method takes a list of files relative to the appropriate root
    * of this Combiner. These files are then loaded, searched for noted
    * requirements. If there are any, those files will also be given the
-   * same procedure. 
-   * 
+   * same procedure.
+   *
    * This code maintains the ordering of the scripts as necessary, placing
    * any listed requirements before the content of the supplied file, in
-   * their specified order. 
-   * 
-   * Finally when all is said and done, the {@code output} property is 
+   * their specified order.
+   *
+   * Finally when all is said and done, the {@code output} property is
    * filled with the content of the loaded data.
    *
    * @param {Array(String)} filesToRead an array of Strings denoting the
    *     name and relative path of the files to parse.
    * @return a promise that can be listened to for when the process is
-   *     complete. It receives all the payloads in its resolution. 
+   *     complete. It receives all the payloads in its resolution.
    */
   readFiles: function(filesToRead) {
     var cache     = this.cache,
@@ -394,8 +397,8 @@ Combiner.prototype = {
         defer.resolve(result);
 
 
-        this.order.reverse();     
-        this.output = ""; 
+        this.order.reverse();
+        this.output = "";
         this.order.forEach((function(item) {
           fullPath = pth.join(rootUri, item);
           this.output += this.cache[fullPath].body;
@@ -409,7 +412,7 @@ Combiner.prototype = {
     return promise;
   },
 
-  /** 
+  /**
    * Writes the combined output to a file.
    *
    * @param the chunks of data to write as an array or if nothing is supplied
@@ -427,7 +430,7 @@ Combiner.prototype = {
     var dir = Combiner.getRootsForType(this.type), fpath;
     dir = dir.length ? dir[0] : process.cwd();
 
-    fpath = pth.resolve(pth.join(dest || this.config.outputPath || dir, 
+    fpath = pth.resolve(pth.join(dest || this.config.outputPath || dir,
         this.config.output));
 
     fs.writeFileSync(fpath, output);
@@ -470,7 +473,7 @@ jQuery.extend(Combiner, {
 
     if (type === Combiner.JS) {
       results.push(jsRoot);
-    } 
+    }
     else if (type === Combiner.CSS
         || type === Combiner.LESS
         || type === Combiner.SCSS
@@ -490,7 +493,7 @@ jQuery.extend(Combiner, {
   getGlobalCache: function(type) {
     var scope = (typeof global !== 'undefined') ? global : window;
 
-    ((scope.CombinerCache = scope.CombinerCache || {})[type] = 
+    ((scope.CombinerCache = scope.CombinerCache || {})[type] =
         scope.CombinerCache[type] || {});
 
     return scope.CombinerCache[type];
@@ -510,8 +513,8 @@ jQuery.extend(Combiner, {
    *      strings to process
    */
   getRequired: function(source) {
-    var evalString, 
-        requiresPortion,           
+    var evalString,
+        requiresPortion,
         regex = new RegExp(Combiner.REQUIRE),
         results = [];
 
@@ -548,21 +551,21 @@ jQuery.extend(Combiner, {
  * are automatically determined by the route name. This can be overridden by
  * specifying an object context with a specified url property. The middleware
  * generator NamedCombiner(name) will do this automatically.
- * 
+ *
  * @param req the request object as supplied by Node.js
  * @param res the response object as supplied by Node.js
  * @param next the next middleware in the chain
- */ 
+ */
 function PageNameCombiner(req, res, next) {
   var defExtension, pageExtension, pageName, uriToPage, url,
-      jsPageName, jsPagePath, jsCombiner, jsTask, 
+      jsPageName, jsPagePath, jsCombiner, jsTask,
       cssPageName, cssPagePath, cssCombiner, cssTask, mkdirp;
 
   mkdirp = require('mkdirp');
   url = this.url || req.url;
   defExtension = '.' + req.app.get('view engine');
   pageExtension = pth.extname(url) || defExtension;
-  pageName = url === '/' ? 'index' 
+  pageName = url === '/' ? 'index'
       : pth.basename(url).replace(pageExtension, '');
 
   // remove query string if present.
@@ -574,9 +577,9 @@ function PageNameCombiner(req, res, next) {
   jsPagePath = pth.join(jsRoot, uriToPage, 'pages');
   mkdirp.sync(jsPagePath);
   jsCombiner = req.app.jsCombiner || new Combiner(jQuery.extend({},
-    JSCombiner.baseConfig, 
+    JSCombiner.baseConfig,
     {
-      type: Combiner.JS, 
+      type: Combiner.JS,
       output: jsPageName,
       outputPath: jsPagePath
     }
@@ -590,7 +593,7 @@ function PageNameCombiner(req, res, next) {
   cssCombiner = req.app.cssCombiner || new Combiner(jQuery.extend({},
     CSSCombiner.baseConfig,
     {
-      type: Combiner.CSS, 
+      type: Combiner.CSS,
       output: cssPageName,
       outputPath: cssPagePath
     }
@@ -614,7 +617,7 @@ function PageNameCombiner(req, res, next) {
  * not neatly resolve to a file name.
  *
  * @param name the url to bind the returned PageNameCombiner middleware with
- */ 
+ */
 function NamedCombiner(name) {
   return PageNameCombiner.bind({
     url: name
@@ -625,14 +628,14 @@ function NamedCombiner(name) {
  * A JavaScript middleware that wraps a Combiner instance. This is used by the
  * PageNameCombiner but can be used individually as well. Subsequent requests
  * that should skip this middleware for any particular reason can specify the
- * URL parameter "[?&]skipCombiner=true". 
- * 
+ * URL parameter "[?&]skipCombiner=true".
+ *
  * @param req the request object as supplied by Node.js
  * @param res the response object as supplied by Node.js
  * @param next the next middleware in the chain
  */
 function JSCombiner(req, res, next) {
-  if (req.query.skipCombiner 
+  if (req.query.skipCombiner
       && req.query.skipCombiner.toLowerCase() === "true") {
     return next();
   }
@@ -644,7 +647,7 @@ function JSCombiner(req, res, next) {
   if (pth.basename(req.url).indexOf(jsCombiner.config.suffix) === -1) {
     jsCombiner.readFiles([jsPageName]).then(function() {
       res.set('Content-Type', 'text/javascript');
-      res.send(jsCombiner.cache.output);     
+      res.send(jsCombiner.cache.output);
     });
   }
   else {
@@ -656,8 +659,8 @@ function JSCombiner(req, res, next) {
  * A CSS middleware that wraps a Combiner instance. This is used by the
  * PageNameCombiner but can be used individually as well. Subsequent requests
  * that should skip this middleware for any particular reason can specify the
- * URL parameter "[?&]skipCombiner=true". 
- * 
+ * URL parameter "[?&]skipCombiner=true".
+ *
  * @param req the request object as supplied by Node.js
  * @param res the response object as supplied by Node.js
  * @param next the next middleware in the chain
@@ -667,7 +670,7 @@ function CSSCombiner(req, res, next) {
     return next();
   }
 
-  var config = jQuery.extend({}, CSSCombiner.baseConfig 
+  var config = jQuery.extend({}, CSSCombiner.baseConfig
           || {}, {type: Combiner.CSS}),
       cssPageName = req.params[0],
       cssCombiner = req.app.cssCombiner || new Combiner(config);
@@ -675,7 +678,7 @@ function CSSCombiner(req, res, next) {
   if (pth.basename(req.url).indexOf(cssCombiner.config.suffix) === -1) {
     cssCombiner.readFiles([cssPageName]).then(function() {
       res.set('Content-Type', 'text/css');
-      res.send(cssCombiner.cache.output);       
+      res.send(cssCombiner.cache.output);
     });
   }
   else {
@@ -687,7 +690,7 @@ function CSSCombiner(req, res, next) {
  * This function sets up a route, which by default is anything under
  * /js/, that recursively will build up a combined package based on the
  * various @require [] values in comments at the top of each file.
- * 
+ *
  * @param express an instance of the express app server
  * @param additionalMiddleware a function or an array of functions of extra
  *     middleware to invoke on each call to the created route
@@ -706,7 +709,7 @@ function handleJS(express, additonalMiddleware, pathName) {
     else {
       middleware.push(additonalMiddleware);
     }
-    express.get(regex, middleware, JSCombiner);  
+    express.get(regex, middleware, JSCombiner);
   }
   else {
     express.get(regex, JSCombiner);
@@ -717,7 +720,7 @@ function handleJS(express, additonalMiddleware, pathName) {
  * This function sets up a route, which by default is anything under
  * /css/, that recursively will build up a combined package based on the
  * various @require [] values in comments at the top of each file.
- * 
+ *
  * @param express an instance of the express app server
  * @param additionalMiddleware a function or an array of functions of extra
  *     middleware to invoke on each call to the created route
@@ -736,7 +739,7 @@ function handleCSS(express, additonalMiddleware, pathName) {
     else {
       middleware.push(additonalMiddleware);
     }
-    express.get(regex, middleware, CSSCombiner);  
+    express.get(regex, middleware, CSSCombiner);
   }
   else {
     express.get(regex, CSSCombiner);
@@ -745,9 +748,9 @@ function handleCSS(express, additonalMiddleware, pathName) {
 
 /**
  * This function sets up two routes, which by default are anything under
- * /js/ and /css/, that recursively will build up combined packages based 
+ * /js/ and /css/, that recursively will build up combined packages based
  * on the various @require [] values in comments at the top of each file.
- * 
+ *
  * @param express an instance of the express app server
  * @param additionalMiddleware a function or an array of functions of extra
  *     middleware to invoke on each call to the created route
@@ -800,7 +803,7 @@ module.exports = function(config) {
   this.cssRootUri = this.cssRoot.replace(this.root, '');
 
   this.express = config.express || null;
-  this.env = this.express && this.express.get('env') 
+  this.env = this.express && this.express.get('env')
       || config.env || 'development';
   this.dev = (this.env === 'development');
   jQuery.extend(moduleState, this);

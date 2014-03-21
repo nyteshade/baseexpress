@@ -1,11 +1,16 @@
-exports.attach = function(Handlebars) {
+import Visitor from "./visitor";
 
-// BEGIN(BROWSER)
+export function print(ast) {
+  return new PrintVisitor().accept(ast);
+}
 
-Handlebars.PrintVisitor = function() { this.padding = 0; };
-Handlebars.PrintVisitor.prototype = new Handlebars.Visitor();
+export function PrintVisitor() {
+  this.padding = 0;
+}
 
-Handlebars.PrintVisitor.prototype.pad = function(string, newline) {
+PrintVisitor.prototype = new Visitor();
+
+PrintVisitor.prototype.pad = function(string, newline) {
   var out = "";
 
   for(var i=0,l=this.padding; i<l; i++) {
@@ -18,10 +23,9 @@ Handlebars.PrintVisitor.prototype.pad = function(string, newline) {
   return out;
 };
 
-Handlebars.PrintVisitor.prototype.program = function(program) {
+PrintVisitor.prototype.program = function(program) {
   var out = "",
       statements = program.statements,
-      inverse = program.inverse,
       i, l;
 
   for(i=0, l=statements.length; i<l; i++) {
@@ -33,7 +37,7 @@ Handlebars.PrintVisitor.prototype.program = function(program) {
   return out;
 };
 
-Handlebars.PrintVisitor.prototype.block = function(block) {
+PrintVisitor.prototype.block = function(block) {
   var out = "";
 
   out = out + this.pad("BLOCK:");
@@ -58,8 +62,8 @@ Handlebars.PrintVisitor.prototype.block = function(block) {
   return out;
 };
 
-Handlebars.PrintVisitor.prototype.mustache = function(mustache) {
-  var params = mustache.params, paramStrings = [], hash;
+PrintVisitor.prototype.sexpr = function(sexpr) {
+  var params = sexpr.params, paramStrings = [], hash;
 
   for(var i=0, l=params.length; i<l; i++) {
     paramStrings.push(this.accept(params[i]));
@@ -67,18 +71,22 @@ Handlebars.PrintVisitor.prototype.mustache = function(mustache) {
 
   params = "[" + paramStrings.join(", ") + "]";
 
-  hash = mustache.hash ? " " + this.accept(mustache.hash) : "";
+  hash = sexpr.hash ? " " + this.accept(sexpr.hash) : "";
 
-  return this.pad("{{ " + this.accept(mustache.id) + " " + params + hash + " }}");
+  return this.accept(sexpr.id) + " " + params + hash;
 };
 
-Handlebars.PrintVisitor.prototype.partial = function(partial) {
+PrintVisitor.prototype.mustache = function(mustache) {
+  return this.pad("{{ " + this.accept(mustache.sexpr) + " }}");
+};
+
+PrintVisitor.prototype.partial = function(partial) {
   var content = this.accept(partial.partialName);
   if(partial.context) { content = content + " " + this.accept(partial.context); }
   return this.pad("{{> " + content + " }}");
 };
 
-Handlebars.PrintVisitor.prototype.hash = function(hash) {
+PrintVisitor.prototype.hash = function(hash) {
   var pairs = hash.pairs;
   var joinedPairs = [], left, right;
 
@@ -91,19 +99,19 @@ Handlebars.PrintVisitor.prototype.hash = function(hash) {
   return "HASH{" + joinedPairs.join(", ") + "}";
 };
 
-Handlebars.PrintVisitor.prototype.STRING = function(string) {
+PrintVisitor.prototype.STRING = function(string) {
   return '"' + string.string + '"';
 };
 
-Handlebars.PrintVisitor.prototype.INTEGER = function(integer) {
+PrintVisitor.prototype.INTEGER = function(integer) {
   return "INTEGER{" + integer.integer + "}";
 };
 
-Handlebars.PrintVisitor.prototype.BOOLEAN = function(bool) {
+PrintVisitor.prototype.BOOLEAN = function(bool) {
   return "BOOLEAN{" + bool.bool + "}";
 };
 
-Handlebars.PrintVisitor.prototype.ID = function(id) {
+PrintVisitor.prototype.ID = function(id) {
   var path = id.parts.join("/");
   if(id.parts.length > 1) {
     return "PATH:" + path;
@@ -112,23 +120,19 @@ Handlebars.PrintVisitor.prototype.ID = function(id) {
   }
 };
 
-Handlebars.PrintVisitor.prototype.PARTIAL_NAME = function(partialName) {
+PrintVisitor.prototype.PARTIAL_NAME = function(partialName) {
     return "PARTIAL:" + partialName.name;
 };
 
-Handlebars.PrintVisitor.prototype.DATA = function(data) {
-  return "@" + data.id;
+PrintVisitor.prototype.DATA = function(data) {
+  return "@" + this.accept(data.id);
 };
 
-Handlebars.PrintVisitor.prototype.content = function(content) {
+PrintVisitor.prototype.content = function(content) {
   return this.pad("CONTENT[ '" + content.string + "' ]");
 };
 
-Handlebars.PrintVisitor.prototype.comment = function(comment) {
+PrintVisitor.prototype.comment = function(comment) {
   return this.pad("{{! '" + comment.comment + "' }}");
-};
-// END(BROWSER)
-
-return Handlebars;
 };
 

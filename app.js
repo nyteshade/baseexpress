@@ -5,9 +5,9 @@
 
 global.dir = function(o,print) {
   var a=require('util').inspect(o,{colors:true});
-  if(print) 
-    console.log(a); 
-  else 
+  if(print)
+    console.log(a);
+  else
     return a;
 };
 
@@ -28,8 +28,7 @@ var express = require('express')
       express: app,
       log: false
     })
-  , lessMiddleware = require('less-middleware')({ 
-      src: '../less',
+  , lessMiddleware = require('less-middleware')('../less', {
       dest: '/css',
       root: path.join(__dirname, 'public'),
       debug: false
@@ -66,8 +65,8 @@ app.get('/testMongo', combiner.NamedCombiner('/'), routes.testMongo);
 
 // By binding an object that specifies 'url', the PageNameCombiner
 // can be coerced into sharing JS and CSS of a differently named
-// page. / == 'index' as far as page names for CSS and JS go. 
-app.get('/name/:name/gender/:gender', combiner.NamedCombiner('/'), 
+// page. / == 'index' as far as page names for CSS and JS go.
+app.get('/name/:name/gender/:gender', combiner.NamedCombiner('/'),
     routes.index);
 
 combiner.handleScriptAndStyle(app);

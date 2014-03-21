@@ -1,19 +1,83 @@
-exports.attach = function(Handlebars) {
+import Exception from "../exception";
 
-// BEGIN(BROWSER)
-(function() {
+function LocationInfo(locInfo){
+  locInfo = locInfo || {};
+  this.firstLine   = locInfo.first_line;
+  this.firstColumn = locInfo.first_column;
+  this.lastColumn  = locInfo.last_column;
+  this.lastLine    = locInfo.last_line;
+}
 
-  Handlebars.AST = {};
+var AST = {
+  ProgramNode: function(statements, inverseStrip, inverse, locInfo) {
+    var inverseLocationInfo, firstInverseNode;
+    if (arguments.length === 3) {
+      locInfo = inverse;
+      inverse = null;
+    } else if (arguments.length === 2) {
+      locInfo = inverseStrip;
+      inverseStrip = null;
+    }
 
-  Handlebars.AST.ProgramNode = function(statements, inverse) {
+    LocationInfo.call(this, locInfo);
     this.type = "program";
     this.statements = statements;
-    if(inverse) { this.inverse = new Handlebars.AST.ProgramNode(inverse); }
-  };
+    this.strip = {};
 
-  Handlebars.AST.MustacheNode = function(rawParams, hash, unescaped) {
+    if(inverse) {
+      firstInverseNode = inverse[0];
+      if (firstInverseNode) {
+        inverseLocationInfo = {
+          first_line: firstInverseNode.firstLine,
+          last_line: firstInverseNode.lastLine,
+          last_column: firstInverseNode.lastColumn,
+          first_column: firstInverseNode.firstColumn
+        };
+        this.inverse = new AST.ProgramNode(inverse, inverseStrip, inverseLocationInfo);
+      } else {
+        this.inverse = new AST.ProgramNode(inverse, inverseStrip);
+      }
+      this.strip.right = inverseStrip.left;
+    } else if (inverseStrip) {
+      this.strip.left = inverseStrip.right;
+    }
+  },
+
+  MustacheNode: function(rawParams, hash, open, strip, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "mustache";
-    this.escaped = !unescaped;
+    this.strip = strip;
+
+    // Open may be a string parsed from the parser or a passed boolean flag
+    if (open != null && open.charAt) {
+      // Must use charAt to support IE pre-10
+      var escapeFlag = open.charAt(3) || open.charAt(2);
+      this.escaped = escapeFlag !== '{' && escapeFlag !== '&';
+    } else {
+      this.escaped = !!open;
+    }
+
+    if (rawParams instanceof AST.SexprNode) {
+      this.sexpr = rawParams;
+    } else {
+      // Support old AST API
+      this.sexpr = new AST.SexprNode(rawParams, hash);
+    }
+
+    this.sexpr.isRoot = true;
+
+    // Support old AST API that stored this info in MustacheNode
+    this.id = this.sexpr.id;
+    this.params = this.sexpr.params;
+    this.hash = this.sexpr.hash;
+    this.eligibleHelper = this.sexpr.eligibleHelper;
+    this.isHelper = this.sexpr.isHelper;
+  },
+
+  SexprNode: function(rawParams, hash, locInfo) {
+    LocationInfo.call(this, locInfo);
+
+    this.type = "sexpr";
     this.hash = hash;
 
     var id = this.id = rawParams[0];
@@ -31,59 +95,79 @@ exports.attach = function(Handlebars) {
     // if a mustache is an eligible helper but not a definite
     // helper, it is ambiguous, and will be resolved in a later
     // pass or at runtime.
-  };
+  },
 
-  Handlebars.AST.PartialNode = function(partialName, context) {
+  PartialNode: function(partialName, context, strip, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type         = "partial";
     this.partialName  = partialName;
     this.context      = context;
-  };
+    this.strip = strip;
+  },
 
-  Handlebars.AST.BlockNode = function(mustache, program, inverse, close) {
-    var verifyMatch = function(open, close) {
-      if(open.original !== close.original) {
-        throw new Handlebars.Exception(open.original + " doesn't match " + close.original);
-      }
-    };
+  BlockNode: function(mustache, program, inverse, close, locInfo) {
+    LocationInfo.call(this, locInfo);
 
-    verifyMatch(mustache.id, close);
-    this.type = "block";
+    if(mustache.sexpr.id.original !== close.path.original) {
+      throw new Exception(mustache.sexpr.id.original + " doesn't match " + close.path.original, this);
+    }
+
+    this.type = 'block';
     this.mustache = mustache;
     this.program  = program;
     this.inverse  = inverse;
 
-    if (this.inverse && !this.program) {
+    this.strip = {
+      left: mustache.strip.left,
+      right: close.strip.right
+    };
+
+    (program || inverse).strip.left = mustache.strip.right;
+    (inverse || program).strip.right = close.strip.left;
+
+    if (inverse && !program) {
       this.isInverse = true;
     }
-  };
+  },
 
-  Handlebars.AST.ContentNode = function(string) {
+  ContentNode: function(string, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "content";
     this.string = string;
-  };
+  },
 
-  Handlebars.AST.HashNode = function(pairs) {
+  HashNode: function(pairs, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "hash";
     this.pairs = pairs;
-  };
+  },
 
-  Handlebars.AST.IdNode = function(parts) {
+  IdNode: function(parts, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "ID";
-    this.original = parts.join(".");
 
-    var dig = [], depth = 0;
+    var original = "",
+        dig = [],
+        depth = 0;
 
     for(var i=0,l=parts.length; i<l; i++) {
-      var part = parts[i];
+      var part = parts[i].part;
+      original += (parts[i].separator || '') + part;
 
       if (part === ".." || part === "." || part === "this") {
-        if (dig.length > 0) { throw new Handlebars.Exception("Invalid path: " + this.original); }
-        else if (part === "..") { depth++; }
-        else { this.isScoped = true; }
+        if (dig.length > 0) {
+          throw new Exception("Invalid path: " + original, this);
+        } else if (part === "..") {
+          depth++;
+        } else {
+          this.isScoped = true;
+        }
+      } else {
+        dig.push(part);
       }
-      else { dig.push(part); }
     }
 
+    this.original = original;
     this.parts    = dig;
     this.string   = dig.join('.');
     this.depth    = depth;
@@ -93,44 +177,50 @@ exports.attach = function(Handlebars) {
     this.isSimple = parts.length === 1 && !this.isScoped && depth === 0;
 
     this.stringModeValue = this.string;
-  };
+  },
 
-  Handlebars.AST.PartialNameNode = function(name) {
+  PartialNameNode: function(name, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "PARTIAL_NAME";
-    this.name = name;
-  };
+    this.name = name.original;
+  },
 
-  Handlebars.AST.DataNode = function(id) {
+  DataNode: function(id, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "DATA";
     this.id = id;
-  };
+  },
 
-  Handlebars.AST.StringNode = function(string) {
+  StringNode: function(string, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "STRING";
-    this.string = string;
-    this.stringModeValue = string;
-  };
+    this.original =
+      this.string =
+      this.stringModeValue = string;
+  },
 
-  Handlebars.AST.IntegerNode = function(integer) {
+  IntegerNode: function(integer, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "INTEGER";
-    this.integer = integer;
+    this.original =
+      this.integer = integer;
     this.stringModeValue = Number(integer);
-  };
+  },
 
-  Handlebars.AST.BooleanNode = function(bool) {
+  BooleanNode: function(bool, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "BOOLEAN";
     this.bool = bool;
     this.stringModeValue = bool === "true";
-  };
+  },
 
-  Handlebars.AST.CommentNode = function(comment) {
+  CommentNode: function(comment, locInfo) {
+    LocationInfo.call(this, locInfo);
     this.type = "comment";
     this.comment = comment;
-  };
-
-})();
-// END(BROWSER)
-
-return Handlebars;
+  }
 };
 
+// Must be exported as an object rather than the root of the module as the jison lexer
+// most modify the object to operate properly.
+export default AST;
