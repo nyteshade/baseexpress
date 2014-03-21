@@ -1,0 +1,21 @@
+{
+  "name": "polymer-ui-sidebar",
+  "private": true,
+  "dependencies": {
+    "polymer": "Polymer/polymer#0.2.1",
+    "polymer-ui-theme-aware": "Polymer/polymer-ui-theme-aware#0.2.1",
+    "polymer-flex-layout": "Polymer/polymer-flex-layout#0.2.1",
+    "polymer-ui-sidebar-header": "Polymer/polymer-ui-sidebar-header#0.2.1"
+  },
+  "version": "0.2.1",
+  "homepage": "https://github.com/Polymer/polymer-ui-sidebar",
+  "_release": "0.2.1",
+  "_resolution": {
+    "type": "version",
+    "tag": "0.2.1",
+    "commit": "4c4c5f5802712f6994003ffbb6c87432b39cb4e6"
+  },
+  "_source": "git://github.com/Polymer/polymer-ui-sidebar.git",
+  "_target": "0.2.1",
+  "_originalSource": "Polymer/polymer-ui-sidebar"
+}

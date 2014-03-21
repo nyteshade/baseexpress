@@ -1,0 +1,20 @@
+{
+  "name": "polymer-ui-accordion",
+  "private": true,
+  "dependencies": {
+    "polymer": "Polymer/polymer#0.2.1",
+    "polymer-selector": "Polymer/polymer-selector#0.2.1",
+    "polymer-ui-collapsible": "Polymer/polymer-ui-collapsible#0.2.1"
+  },
+  "version": "0.2.1",
+  "homepage": "https://github.com/Polymer/polymer-ui-accordion",
+  "_release": "0.2.1",
+  "_resolution": {
+    "type": "version",
+    "tag": "0.2.1",
+    "commit": "8934ebcd66fad638daabbc46ef1d0c649d987d2f"
+  },
+  "_source": "git://github.com/Polymer/polymer-ui-accordion.git",
+  "_target": "0.2.1",
+  "_originalSource": "Polymer/polymer-ui-accordion"
+}

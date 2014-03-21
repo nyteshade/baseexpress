@@ -1,12 +1,15 @@
-<element name="my-element">
+<link rel="import" href="/bower/polymer/polymer.html">
+<polymer-element name="my-element">
   <link rel="stylesheet" href="/css/darkstrap-v0.9.0.css" type="text/css" media="screen" charset="utf-8">
   <link rel="stylesheet" href="/css/bootstrap.min.css" type="text/css" media="screen" charset="utf-8">
   <template>
     <div class="lead well">I'm a polymer {{type}}. STUFF This is my shadow DOM</div>
   </template>
   <script>
-    Polymer.register(this, {
-      type: "element"
-    });    
+    Polymer('my-element', {
+      ready: function() {
+        //...
+      }
+    });
   </script>
-</element>
+</polymer-element>

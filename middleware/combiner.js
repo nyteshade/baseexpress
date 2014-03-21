@@ -88,9 +88,7 @@ var G = (typeof global != 'undefined') ? global : window,
     isA = function(o) {return "[object Array]" === ({}).toString.call(o)},
     isO = function(o) {return "[object Object]" === ({}).toString.call(o)},
     isS = function(o) {return "[object String]" === ({}).toString.call(o)},
-    jsdom = require('jsdom'),
-    domWindow = jsdom.jsdom().createWindow(),
-    jQuery = require('jquery')(domWindow),
+    extend = require('extend'),
     moduleState = {},
     root = '',
     jsRoot = '',
@@ -123,7 +121,7 @@ var G = (typeof global != 'undefined') ? global : window,
  *     the Combiner.DEFAULTS values
  */
 function Combiner(files, config) {
-  config = jQuery.extend({}, Combiner.DEFAULTS, {
+  config = extend({}, Combiner.DEFAULTS, {
       root: moduleState.root,
       jsRoot: moduleState.jsRoot,
       jsUri: moduleState.jsRootUri,
@@ -442,7 +440,7 @@ Combiner.prototype = {
   }
 };
 
-jQuery.extend(Combiner, {
+extend(Combiner, {
   /** Known extension type for JavaScript (JS) files */
   JS: ".js",
 
@@ -576,7 +574,7 @@ function PageNameCombiner(req, res, next) {
   jsPageName = pageName;
   jsPagePath = pth.join(jsRoot, uriToPage, 'pages');
   mkdirp.sync(jsPagePath);
-  jsCombiner = req.app.jsCombiner || new Combiner(jQuery.extend({},
+  jsCombiner = req.app.jsCombiner || new Combiner(extend({},
     JSCombiner.baseConfig,
     {
       type: Combiner.JS,
@@ -590,7 +588,7 @@ function PageNameCombiner(req, res, next) {
   cssPageName = pageName;
   cssPagePath = pth.join(cssRoot, uriToPage, 'pages');
   mkdirp.sync(cssPagePath);
-  cssCombiner = req.app.cssCombiner || new Combiner(jQuery.extend({},
+  cssCombiner = req.app.cssCombiner || new Combiner(extend({},
     CSSCombiner.baseConfig,
     {
       type: Combiner.CSS,
@@ -670,7 +668,7 @@ function CSSCombiner(req, res, next) {
     return next();
   }
 
-  var config = jQuery.extend({}, CSSCombiner.baseConfig
+  var config = extend({}, CSSCombiner.baseConfig
           || {}, {type: Combiner.CSS}),
       cssPageName = req.params[0],
       cssCombiner = req.app.cssCombiner || new Combiner(config);
@@ -806,7 +804,7 @@ module.exports = function(config) {
   this.env = this.express && this.express.get('env')
       || config.env || 'development';
   this.dev = (this.env === 'development');
-  jQuery.extend(moduleState, this);
+  extend(moduleState, this);
 
   return this;
 }

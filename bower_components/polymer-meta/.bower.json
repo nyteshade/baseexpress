@@ -1,0 +1,18 @@
+{
+  "name": "polymer-meta",
+  "private": true,
+  "dependencies": {
+    "polymer": "Polymer/polymer#0.2.1"
+  },
+  "version": "0.2.1",
+  "homepage": "https://github.com/Polymer/polymer-meta",
+  "_release": "0.2.1",
+  "_resolution": {
+    "type": "version",
+    "tag": "0.2.1",
+    "commit": "696261dbad53330a815d4631a650dd50e3b1e0ef"
+  },
+  "_source": "git://github.com/Polymer/polymer-meta.git",
+  "_target": "0.2.1",
+  "_originalSource": "Polymer/polymer-meta"
+}
