@@ -8,9 +8,7 @@
   "dependencies": {
     "express": "3.3.4",
     "hbs": "*",
-    "jdom": "*",
 		"extend": "*",
-    "jquery": "*",
     "forever": "*",
     "less-middleware": "*",
     "node-sass": "*",
