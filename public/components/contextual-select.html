@@ -1,0 +1,36 @@
+<link rel="import" href="/bower/polymer/polymer.html">
+<polymer-element name="contextual-select" attributes="autofocus disabled form multiple name required size config">
+  <link rel="stylesheet" href="/css/darkstrap-v0.9.0.css" type="text/css" media="screen" charset="utf-8">
+  <link rel="stylesheet" href="/css/bootstrap.min.css" type="text/css" media="screen" charset="utf-8">
+  <script src="/js/bootstrap.js?skipCombiner=true"></script>
+  <style>
+
+  </style>
+  <template>
+    <div class="btn-group">
+      <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown">
+        Action <span class="caret"></span>
+      </button>
+      <ul class="dropdown-menu" role="menu">
+        <li><a href="#">Action</a></li>
+        <li><a href="#">Another action</a></li>
+        <li><a href="#">Something else here</a></li>
+        <li class="divider"></li>
+        <li><a href="#">Separated link</a></li>
+      </ul>
+    </div>
+  </template>
+  <script>
+    Polymer('contextual-select', {
+      created: function() {
+        this.config = {
+          options: [1,2],
+          context: ['lorem ipsum', 'ipsum dolor']
+        };
+      },
+      ready: function() {
+        //...
+      }
+    });
+  </script>
+</polymer-element>
