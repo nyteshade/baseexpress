@@ -23,5 +23,9 @@
     "polymer": "~0.2.1",
     "polymer-elements": "Polymer/polymer-elements#~0.2.1",
     "polymer-ui-elements": "Polymer/polymer-ui-elements#~0.2.1"
+  },
+  "resolutions": {
+    "polymer": "^0.5",
+    "core-component-page": "^0.5"
   }
 }

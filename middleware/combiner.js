@@ -1,6 +1,6 @@
 /**
  * combiner.js
- * Copyright (c) 2013 Gabrielle Harrison
+ * Copyright (c) 2013 Brielle Harrison
  *
  * The Combiner system consists of a JavaScript class to manage the work of
  * reading, combining and writing groups of related files together as a single
