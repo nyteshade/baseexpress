@@ -33,7 +33,7 @@ var express = require('express')
       root: path.join(__dirname, 'public'),
       debug: false
     })
-  , sassMiddleware = sass.middleware({
+  , sassMiddleware = require('node-sass-middleware')({
       src: '../sass',
       dest: '/css',
       root: path.join(__dirname, 'public'),
